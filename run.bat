@@ -1,5 +1,6 @@
+
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions
 cd /d "%~dp0"
 
 title StaySync - Portable Desktop Launcher
@@ -10,93 +11,61 @@ echo                Hostel Mess Complaint Tracker (Java 21 + MySQL)
 echo ==============================================================================
 echo.
 
-:: 1. Verify Java 21+ is available
 echo [1/3] Checking Java environment...
 java -version >nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Java runtime was not found on your PATH!
-    echo.
-    echo StaySync requires Java 21 (JDK 21) or higher.
-    echo Please download and install Eclipse Temurin JDK 21 from:
-    echo   https://adoptium.net/temurin/releases/?version=21
-    echo.
-    echo Ensure "Add to PATH" is checked during installation.
+if errorlevel 1 (
+    echo [ERROR] Java was not found or could not run.
+    echo Install Java 21 or higher from:
+    echo https://adoptium.net/temurin/releases/?version=21
     echo.
     pause
     exit /b 1
 )
 
-:: Extract and verify major version
-for /f "tokens=3" %%g in ('java -version 2^>^&1 ^| findstr /i "version"') do (
-    set JVER=%%~g
-)
-echo       Detected Java version: !JVER!
+echo       Java detected:
+java -version 2>&1
+echo.
 
-:: 2. Verify / Prepare configuration file
 echo [2/3] Checking application configuration...
 if not exist "config\app.properties" (
     if exist "config\app.properties.example" (
-        echo [SETUP] config\app.properties not found. Creating from template...
-        copy "config\app.properties.example" "config\app.properties" >nul
+        if not exist "config" mkdir config
+        copy /Y "config\app.properties.example" "config\app.properties" >nul
         echo.
-        echo [ACTION REQUIRED] A new 'config\app.properties' file was created!
-        echo Please edit 'config\app.properties' with Notepad to configure your
-        echo local MySQL password:
+        echo [SETUP] Created config\app.properties.
+        echo Edit this file with your local MySQL credentials.
+        notepad "config\app.properties"
         echo.
-        echo       db.user=root
-        echo       db.password=YOUR_MYSQL_PASSWORD
-        echo.
-        echo After setting your password, run this script again.
-        echo.
-        notepad config\app.properties
+        echo Save the configuration, then run run.bat again.
         pause
         exit /b 0
     ) else (
-        echo [ERROR] Neither config\app.properties nor config\app.properties.example exists!
+        echo [ERROR] Configuration template not found.
         pause
         exit /b 1
     )
-) else (
-    echo       Configuration file verified: config\app.properties
 )
 
-:: Ensure uploads directory exists
-if not exist "uploads" (
-    mkdir uploads >nul 2>&1
-)
+echo       Configuration file found.
 
-:: 3. Launch Application
-echo [3/3] Launching StaySync application...
+if not exist "uploads" mkdir uploads
+
+echo.
+echo [3/3] Launching StaySync...
 echo.
 
 if exist "target\staysync.jar" (
-    echo Starting packaged executable JAR (target\staysync.jar)...
-    echo.
-    java -jar target\staysync.jar
+    java -jar "target\staysync.jar"
 ) else (
-    :: Check if Maven is installed
-    mvn -v >nul 2>&1
-    if !ERRORLEVEL! equ 0 (
-        echo Target JAR not found. Running via Maven exec plugin...
-        echo.
-        call mvn compile exec:java
-    ) else (
-        echo [ERROR] Neither 'target\staysync.jar' nor Apache Maven was found!
-        echo.
-        echo To run StaySync, you can either:
-        echo   1. Install Apache Maven (https://maven.apache.org/) and run:
-        echo        mvn clean package -DskipTests
-        echo      This will generate 'target\staysync.jar'.
-        echo   2. Copy the pre-built 'target\staysync.jar' from the build machine.
-        echo.
-        pause
-        exit /b 1
-    )
+    echo [ERROR] target\staysync.jar was not found.
+    echo Please download the complete project or rebuild the JAR.
+    pause
+    exit /b 1
 )
 
-if %ERRORLEVEL% neq 0 (
+if errorlevel 1 (
     echo.
-    echo [EXIT] StaySync closed with return code %ERRORLEVEL%.
+    echo [ERROR] StaySync exited with an error.
     pause
 )
 
