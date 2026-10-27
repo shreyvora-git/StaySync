@@ -1,0 +1,126 @@
+# StaySync — .cursorrules (Java Swing Edition)
+# Rules for AI coding agents (Cursor / Antigravity). If your tool doesn't read `.cursorrules`,
+# paste this file into its rules/instructions area.
+
+## 0. Project context
+StaySync (formal title: "Hostel Mess Complaint Tracker") is a DBSC database microproject.
+Students report hostel issues; admins triage and resolve them.
+
+**Stack is FIXED:** Java 21 · **Java Swing** GUI (FlatLaf) · Java application logic · **JDBC** (MySQL Connector/J + HikariCP) · **MySQL 8** (`staysync_db`, 7 tables) · MySQL Workbench for DB work.
+**FORBIDDEN:** React, JavaScript, TypeScript, HTML/CSS, Node/npm, web frameworks, Spring/Spring Boot, REST APIs, JPA/Hibernate, JavaFX, WebView/JCEF/embedded browsers. If you think one is needed, STOP and ask.
+
+Source of truth, in order: `docs/PRD.md` → `docs/ARCHITECTURE.md` → `docs/DESIGN.md`. Read the relevant doc BEFORE building a feature. If code and docs disagree, stop and ask — don't silently diverge.
+The UI is inspired by wisprflow.ai's craft (clean type, whitespace, refined color, polished cards, subtle motion). NEVER copy its text, logo, images, or exact layout.
+
+## 1. Working agreements
+- Work in small vertical slices (screen + controller + service + DAO + SQL + tests). Follow milestones M0→M7 in the PRD.
+- Before coding a feature, list the files you will touch. After, list what changed and how to verify it.
+- Don't add dependencies without saying why; prefer those in `ARCHITECTURE.md` §2. Verify third-party class/method names against the pinned version — don't guess APIs.
+- Don't change table/column names or the schema without updating `database/01_schema.sql` AND `ARCHITECTURE.md` Appendix A.
+- Never invent requirements, statistics, testimonials, certifications, or customer logos.
+- If a request is ambiguous or risky (security, schema, confidentiality, threading), ask one concise question first.
+- Keep changes minimal and focused; don't refactor unrelated code in the same change.
+
+## 2. Code style
+- Java 21: records for models/DTOs, `enum`s for Role/Status/Priority, `var` only when the type is obvious, `Optional` for "maybe absent" returns (never return null collections).
+- Constructor injection by hand (no DI framework). Services and DAOs are plain classes wired in one place (`App`/`ServiceRegistry`).
+- Packages: `config, db, model, dao, service, security, error, ui.{theme,motion,components,charts,shell,screens}, util`. Classes `PascalCase`, methods `camelCase`, constants `UPPER_SNAKE`.
+- SQL: UPPERCASE keywords, snake_case identifiers, tables plural. Keep SQL in DAOs (text blocks `"""`), never in UI or services.
+- Comments explain *why*. No commented-out code. No `System.out.println` — use SLF4J.
+- Run the formatter and tests before finishing.
+
+## 3. THREADING (highest-frequency bug — obey strictly)
+- **EDT only** for creating/mutating Swing components, painting, and listeners. Start the UI with `SwingUtilities.invokeLater`.
+- **Never** run on the EDT: JDBC, file I/O, BCrypt, image decoding/scaling, CSV writing, `Thread.sleep`, network. Use `SwingWorker` or the shared `Async.run(work, onOk, onErr)` helper; update the UI in `onOk/onErr` (EDT).
+- Every screen shows a `SkeletonPanel` while loading and an `ErrorBanner` (with retry) on failure.
+- Drop stale responses (per-controller request counter) so older filter results never overwrite newer ones.
+- Timers/animators: one per concern, stopped when the component is hidden or removed (`removeNotify`/`HierarchyListener`). No leaks.
+- Background poller for notifications: single daemon `ScheduledExecutorService`; results posted via `invokeLater`.
+
+## 4. Swing & UI rules
+- Look and feel: **FlatLaf only** (Light/Dark). Never mix Metal/Nimbus. Theme switch uses the animated change helper; no restart.
+- **Tokens only:** read colors/fonts/radii/spacing through `Tokens`/`Fonts` (backed by `FlatLightLaf.properties`/`FlatDarkLaf.properties`). **No hard-coded `new Color(...)`, hex strings, `new Font(...)`, or magic pixel sizes in components.** Custom painting must multiply by `UIScale.scale(...)`.
+- Layout: **MigLayout/BorderLayout/GridBagLayout. No `setLayout(null)`, no absolute `setBounds` for managed content.** Must resize cleanly from 1000×680 up to 4K and at 100–200% scaling.
+- Custom components extend `JComponent`/`JPanel`, paint with `Graphics2D` (antialiasing on), call `super.paintComponent`, set `setOpaque` correctly, and expose accessible names/roles.
+- Cache expensive rendering (aurora gradients, shadows, scaled thumbnails) as `BufferedImage`; invalidate on resize/theme change. Repaint only the affected rectangle.
+- Animation: only through `Motion` helpers (FlatLaf `Animator` or a 16 ms `javax.swing.Timer`); animate paint-level properties (alpha, offset, progress); **do not animate layout** (except the sidebar collapse helper). Durations from motion tokens, ≤ 480 ms inside the app. Everything non-essential must honor `Motion.enabled()` (Reduce motion).
+- Modals are in-window (`ModalLayer` on the glass pane) with focus containment and `Esc` to close; use `JOptionPane` only for fatal errors.
+- Status/priority/confidential are never color-only: chip = dot/bars/shield + text.
+- Every interactive control: keyboard reachable, visible focus, accessible name/description, sensible mnemonic or shortcut; `Enter` = default action, `Esc` = cancel.
+- Tables: `JTable` with models holding only the current page; server-side sort/filter/pagination; custom renderers; tooltips for truncated text (never confidential text in tooltips for unauthorized users).
+- Mixed-font headings use `EmphasisHeading` (TextLayout-based), not side-by-side labels.
+- Never put sensitive complaint text in window titles, toasts, tooltips, notifications (confidential), or logs.
+
+## 5. Database & JDBC rules
+- **`PreparedStatement` only. NEVER build SQL by concatenating user data.** Not for `LIKE`, not for `ORDER BY`, not for `LIMIT`. Sort columns come from a whitelist map; escape `%`/`_` in `LIKE` terms; fixed SQL fragments only when building dynamic filters, with values in a bind list.
+- Use try-with-resources for `Connection`, `PreparedStatement`, `ResultSet`. Get connections from the HikariCP `DataSource`; never keep a connection in a field.
+- Multi-table writes happen in ONE service-level transaction via `TransactionRunner` (`setAutoCommit(false)` → commit/rollback). DAO methods used in a transaction take a `Connection` parameter.
+- Every status or priority change MUST write a `complaint_history` row and a `notifications` row **in the same transaction**.
+- Enforce transitions in the service: Pending→In Progress, In Progress→Resolved, Resolved→In Progress (reopen, note required). The DB trigger is a backstop, not the primary check.
+- Resolving requires non-blank `resolution_notes` and sets `resolved_at`; reopening clears it.
+- Concurrency: `SELECT … FOR UPDATE`, then `UPDATE … WHERE complaint_id=? AND updated_at=?`; 0 rows ⇒ `ConflictException`.
+- Never hard-delete complaints. Deactivate categories instead of deleting.
+- Map DB errors to typed exceptions; never show SQL text or stack traces to users.
+- The app connects as `staysync_app` (SELECT/INSERT/UPDATE/DELETE only) — **never `root`.** Schema changes are made in MySQL Workbench, not by app code.
+- Seed/demo data is synthetic. Keep SQL scripts in `database/` runnable top-to-bottom in MySQL Workbench; add report-worthy queries to `04_queries.sql`.
+
+## 6. CONFIDENTIALITY (highest-priority rule)
+Safety/ragging/harassment complaints (any complaint with `is_confidential = TRUE`) must never reach unauthorized users through ANY path: tables, search, counts, charts, CSV, notifications, attachments, tooltips, logs.
+- Admin-side reads/writes MUST use the shared confidentiality predicate helper (`AND (c.is_confidential = FALSE OR ? = TRUE)` bound to `canViewConfidential`). Do not hand-write variants.
+- Analytics read from `v_general_complaints`, except the explicit Authorized-Admin confidential summary (counts only).
+- Hidden or unauthorized records raise `NotFoundException` — same user-facing text as a missing record.
+- Notification text for confidential complaints is generic ("There's an update on your private request."): no title, description, or category name.
+- Attachments for confidential complaints are encrypted at rest (AES-GCM) and opened only through `AttachmentService` after an authorization check.
+- Any new method touching complaint data requires a confidentiality test in the same change.
+- The Safety category UI always shows the immediate-danger notice.
+
+## 7. Security checklist (apply to every service method)
+1. First line: `Permissions.require…(Session.current())`.
+2. Does the SQL `WHERE` verify ownership (students) or scope/predicate (admins)? (No IDOR.)
+3. Are inputs validated (length, format, enums) in the service, even if the UI validated them?
+4. Could an error or "not found" message reveal that a hidden record exists?
+5. Passwords: BCrypt; never log, display, or store plaintext; never return `password_hash`.
+6. Registration always creates `Role.STUDENT`; ignore any role input. Admins only via seed or `UserAdminService` (Authorized Admin).
+7. Uploads: ≤ 5 MB, ≤ 3 files, decode with `ImageIO` (null ⇒ reject), re-encode to strip EXIF, UUID filenames, delete files on rollback.
+8. CSV exports: neutralize cells starting `=`, `+`, `-`, `@`, tab, CR; RFC 4180 quoting; UTF-8 BOM; row cap.
+9. Secrets: `config/app.properties` and `uploads/` are git-ignored. **No credentials or keys in source, tests, or docs.**
+10. Idle auto-lock and logout must fully clear `Session`; no sensitive data persisted to disk or `Preferences`.
+
+## 8. Design rules (from DESIGN.md)
+- Minimal, premium, calm. Generous whitespace, one accent color, one primary action per screen.
+- Fonts: Inter (UI), JetBrains Mono (IDs/numbers), Instrument Serif *italic* only for emphasis words (Welcome headline, success/empty titles).
+- Welcome screen = split layout: aurora stage with scripted hero demo (messy text → ticket card cycling Pending → In Progress → Resolved) + sign-in card with **Students | Admins** segmented control.
+- Hero demo is a **scripted illustration, not AI**; never claim automatic categorization in the product.
+- Dashboards use StatCards (count-up), Card grids, DataTable + PaginationBar, Timeline, ConversationView, custom Java2D charts (draw-in once).
+- Both themes must look intentional; check contrast ≥ 4.5:1 for text.
+- Empty, loading (skeleton), error (banner + retry), and success states are required on every screen.
+
+## 9. Testing and "definition of done"
+A task is done only when:
+- [ ] It satisfies the cited PRD requirement ID(s) (put them in the commit message).
+- [ ] Service/DAO tests cover rules, transactions/rollback, and authorization; confidentiality test added if complaint data is touched.
+- [ ] SQL verified in MySQL Workbench; report-relevant SQL saved in `database/`.
+- [ ] UI: both themes; 1000×680, 1280×800, 1920×1080; 100%/150% scaling; keyboard-only path works; Reduce motion verified.
+- [ ] No DB or file I/O on the EDT (verify with an artificial 3 s DB delay: window must still repaint).
+- [ ] No hard-coded colors/fonts/sizes; no lint/format warnings; app builds and starts.
+- [ ] Docs updated if behavior, schema, or service API changed.
+Never claim something works without running it. If you couldn't run it, say so plainly.
+
+## 10. Git
+- Branch per slice: `feat/sub-submit-screen`, `fix/conf-export-leak`.
+- Conventional commits referencing PRD IDs: `feat(complaint): create complaint with attachments [SUB-1..4]`.
+- Never commit `config/app.properties`, `uploads/`, `logs/`, `target/`, IDE files, or real credentials.
+
+## 11. Things you must NOT do
+- Don't introduce any web technology, Spring, JPA/Hibernate, or JavaFX (see §0).
+- Don't touch the DB or files on the EDT.
+- Don't use `Statement` with concatenated SQL or `root` credentials.
+- Don't expose confidential data "temporarily for debugging".
+- Don't add admin self-registration.
+- Don't implement Non-Goals (email/SMS, voice, AI classification, multi-tenant, web/mobile).
+- Don't fabricate testimonials, metrics, logos, or compliance badges.
+- Don't copy wisprflow.ai assets or copy.
+- Don't use `setLayout(null)` or pixel-fixed layouts.
+
+## 12. When unsure
+Stop and ask. Offer 2–3 concrete options with a recommendation. A short question beats a large wrong change.

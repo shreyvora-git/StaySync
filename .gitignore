@@ -1,0 +1,62 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Configuration with credentials (NEVER commit real credentials)
+config/app.properties
+!config/app.properties.example
+
+# Environment & Secret files
+*.env
+*.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+
+# Database Dumps and Local Backups
+*.dump
+*.backup
+*.sql.bak
+backups/
+dump/
+
+# Uploaded complaint attachments
+uploads/
+
+# Runtime Logs
+logs/
+*.log
+
+# IDE and Editor Files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.project
+.classpath
+.settings/
+bin/
+.cursor/
+
+# OS & Temporary Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+*.tmp
+*.temp
+*~
+config/app.properties.bak
+*.bak
+logs/
+target/

@@ -1,0 +1,32 @@
+# StaySync Application Configuration Template
+# Copy this file to config/app.properties and fill in your local MySQL credentials.
+# NEVER commit your config/app.properties file to git.
+
+# ------------------------------------------------------------------------------
+# MySQL Database Connection (InnoDB, utf8mb4)
+# ------------------------------------------------------------------------------
+# Target database staysync_db will be created automatically if absent (given permissions).
+db.url=jdbc:mysql://localhost:3306/staysync_db?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+
+# For standard local MySQL installations, use 'root' or a dedicated 'staysync_app' user:
+db.user=root
+db.password=YOUR_LOCAL_MYSQL_PASSWORD
+
+# HikariCP Connection Pool Size (default: 5)
+db.pool.size=5
+
+# ------------------------------------------------------------------------------
+# Attachments & Storage
+# ------------------------------------------------------------------------------
+uploads.dir=./uploads
+
+# Base64 encoded 256-bit (32 bytes) key for AES-GCM encryption of confidential attachments
+# Demo key provided below for rapid testing; generate custom key with: openssl rand -base64 32
+files.key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+# ------------------------------------------------------------------------------
+# Security and Throttling Settings
+# ------------------------------------------------------------------------------
+login.maxAttempts=5
+login.windowMinutes=15
+session.idleMinutes=30
